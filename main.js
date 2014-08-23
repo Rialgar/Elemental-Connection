@@ -53,7 +53,7 @@ Path.prototype.addPoint = function(x,y){
 	}
 }
 
-Path.prototype.addCircle = function(onEnd){
+Path.prototype.addCircle = function(offset){
 	var domElement = document.createElementNS(SVG_NS, 'circle');
 	domElement.setAttribute('cx', this.points[0].x);
 	domElement.setAttribute('cy', this.points[0].y);
@@ -63,7 +63,6 @@ Path.prototype.addCircle = function(onEnd){
 	var circle = {
 		element: this.element,
 		domElement: domElement,
-		onEnd: onEnd,
 		segment: 1,
 		position: 0
 	}
@@ -72,28 +71,37 @@ Path.prototype.addCircle = function(onEnd){
 
 	this.domElement.parentElement.appendChild(domElement);
 	this.circles.push(circle);
+
+	if(offset > 0){
+		this.moveCircle(circle, offset);
+	}
 	return circle;
 }
 
-Path.prototype.update = function(delta){
-	var dPos = delta / 20;
-	for (var i = 0; i < this.circles.length; i++) {
-		var c = this.circles[i];
-		c.position += dPos;
-		while(this.points[c.segment].length < c.position){
-			c.position -= this.points[c.segment].length
-			c.segment++;
-			if(c.segment >= this.points.length){
-				this.circles.shift();
-				return;
-			}
+Path.prototype.moveCircle = function(circle, delta){
+	var distance = delta / 4;
+	circle.position += distance;
+	while(this.points[circle.segment].length < circle.position){
+		circle.position -= this.points[circle.segment].length
+		circle.segment++;
+		if(circle.segment >= this.points.length){
+			circle.domElement.parentElement.removeChild(circle.domElement);	
+			this.circles.shift();
+			this.drain.addUnit();
+			return;
 		}
-		var s = c.segment;
-		var f = c.position / this.points[s].length;
-		var x = this.points[s-1].x * (1-f) + this.points[s].x * (f);
-		var y = this.points[s-1].y * (1-f) + this.points[s].y * (f);
-		c.domElement.setAttribute('cx',x);
-		c.domElement.setAttribute('cy',y);
+	}
+	var s = circle.segment;
+	var f = circle.position / this.points[s].length;
+	var x = this.points[s-1].x * (1-f) + this.points[s].x * (f);
+	var y = this.points[s-1].y * (1-f) + this.points[s].y * (f);
+	circle.domElement.setAttribute('cx',x);
+	circle.domElement.setAttribute('cy',y);
+}
+
+Path.prototype.update = function(delta){
+	for (var i = 0; i < this.circles.length; i++) {
+		this.moveCircle(this.circles[i], delta);
 	};
 }
 
@@ -119,6 +127,8 @@ function Source(element, x, y, amount, parent, game){
 	this.fill = fill;
 	this.maxAmount = amount;
 	this.amount = amount;
+	this.sendInterval = 500;
+	this.sendNextIn = 0;
 
 	this.updateFill();
 
@@ -145,6 +155,28 @@ Source.prototype.updateFill = function(){
 		var d = 'M'+x+','+y+' A20,20 0 '+la+',1 '+(-x)+','+y+' L'+x+','+y;
 	}
 	this.fill.setAttribute('d', d);
+}
+
+Source.prototype.removePath = function(){
+	this.path = false;
+	this.setAmount(this.maxAmount);
+	this.sendNextIn = 0;
+}
+
+Source.prototype.setAmount = function(amount){
+	this.amount = Math.min(this.maxAmount,Math.max(0,amount));
+	this.updateFill();
+}
+
+Source.prototype.update = function(delta){
+	if(this.amount > 0 && this.path && this.path.drain){
+		this.sendNextIn -= delta;
+		if(this.sendNextIn <= 0){
+			this.path.addCircle(-this.sendNextIn);
+			this.sendNextIn = this.sendInterval;
+			this.setAmount(this.amount-1);
+		}
+	}
 }
 
 function Drain(element, x, y, amount, parent, game){
@@ -194,6 +226,21 @@ Drain.prototype.updateFill = function(){
 	this.fill.setAttribute('height', 20-y);
 }
 
+Drain.prototype.setAmount = function(amount){
+	this.amount = Math.min(this.maxAmount,Math.max(0,amount));
+	this.updateFill();
+}
+
+Drain.prototype.removePath = function(){
+	this.path = false;
+	this.setAmount(0);
+}
+
+Drain.prototype.addUnit = function(){
+	this.setAmount(this.amount+1);
+	this.updateFill();
+}
+
 function Game(svg){
 	this.elements = {
 		earth: {
@@ -211,6 +258,8 @@ function Game(svg){
 	}
 	this.svg = svg;
 	this.paths = [];
+	this.sources = [];
+	this.drains = [];
 	this.paused = false;
 
 	var self = this;
@@ -255,15 +304,18 @@ Game.prototype.update = function(delta){
 		for (var i = 0; i < this.paths.length; i++) {
 			this.paths[i].update(delta);
 		};
+		for (var i = 0; i < this.sources.length; i++) {
+			this.sources[i].update(delta);
+		};
 	}
 }
 
 Game.prototype.removePath = function(path){
 	if(path.source){
-		path.source.path = false;
+		path.source.removePath();
 	}
 	if(path.drain){
-		path.drain.path = false;
+		path.drain.removePath();
 	}
 	this.paths.splice(this.paths.indexOf(path),1);
 	path.domElement.parentElement.removeChild(path.domElement);
@@ -300,26 +352,35 @@ Game.prototype.cancelPath = function(){
 	}
 }
 
+Game.prototype.addSource = function(element, x, y, amount){
+	this.sources.push(new Source(element, x, y, amount, this.svg, this));
+}
+
+Game.prototype.addDrain = function(element, x, y, amount){
+	this.drains.push(new Drain(element, x, y, amount, this.svg, this));
+}
+
 Game.prototype.start = function() {
 		var self = this;
 		this.svg.addEventListener('mousemove', function(evt){
-			self.addPointToPath(evt.layerX*self.scale.x, evt.layerY*self.scale.y);
+			self.addPointToPath(evt.layerX/self.scale.x, evt.layerY/self.scale.y);
 		});
 
 		this.svg.addEventListener('mouseup', function(evt){
 			self.cancelPath();
 		});
 
-		new Source(this.elements.fire, 50, 50, 5, this.svg, this);
-		new Drain(this.elements.fire, 750, 550, 5, this.svg, this);
+		this.addSource(this.elements.fire, 50, 50, 5);
+		this.addDrain(this.elements.fire, 750, 550, 5);
 
-		new Source(this.elements.water, 750, 50, 5, this.svg, this);
-		new Drain(this.elements.water, 50, 550, 5, this.svg, this);
+		this.addSource(this.elements.water, 750, 50, 5);
+		this.addDrain(this.elements.water, 50, 550, 5);
 
 		var last = new Date().valueOf();
 		function update(){
 			var now = new Date().valueOf();
 			var delta = Math.min(now-last, 100);
+			last = now;
 			self.update(delta);
 			window.requestAnimationFrame(update);
 		}
