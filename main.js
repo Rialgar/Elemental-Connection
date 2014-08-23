@@ -140,6 +140,12 @@ function Source(element, x, y, amount, parent, game){
 		}
 		self.path = game.startDrawingPath(self, x, y);
 	});
+	domElement.addEventListener("touchstart", function(evt){
+		if(self.path){
+			game.removePath(self.path);
+		}
+		self.path = game.startDrawingPath(self, x, y);
+	});
 }
 
 Source.prototype.updateFill = function(){
@@ -205,6 +211,8 @@ function Drain(element, x, y, amount, parent, game){
 	this.fill = fill;
 	this.maxAmount = amount;
 	this.amount = 0;
+	this.x = x;
+	this.y = y;
 
 	this.updateFill();
 
@@ -218,6 +226,13 @@ function Drain(element, x, y, amount, parent, game){
 		evt.stopPropagation();
 	});
 }
+
+Drain.prototype.checkTouchEnd = function(x,y){
+	if(x >= this.x-20 && x <= this.x+20 && y >= this.y-20 && y  <= this.y+20){
+		return true;
+	}
+	return false;
+};
 
 Drain.prototype.updateFill = function(){
 	var y = -2*this.amount/this.maxAmount + 1;
@@ -281,8 +296,13 @@ Game.prototype.onResize = function(){
 	this.svg.setAttribute('width', width + 'px');
 	this.svg.setAttribute('height', height + 'px');
 
-	this.svg.style.top = Math.round((dHeight - height)/2) + 'px';
-	this.svg.style.left = Math.round((dWidth - width)/2) + 'px';
+	this.offset = {
+		x: Math.round((dWidth - width)/2),
+		y: Math.round((dHeight - height)/2)
+	}
+
+	this.svg.style.top = this.offset.y + 'px';
+	this.svg.style.left = this.offset.x + 'px';
 
 	this.scale = {
 		x: width / 800,
@@ -370,6 +390,26 @@ Game.prototype.start = function() {
 			self.cancelPath();
 		});
 
+		document.addEventListener('touchmove', function(evt){
+			self.addPointToPath(
+				(evt.touches[0].clientX-self.offset.x)/self.scale.x,
+				(evt.touches[0].clientY-self.offset.y)/self.scale.y
+			);
+			evt.preventDefault();
+		});
+
+		this.svg.addEventListener('touchend', function(evt){
+			var x = (evt.changedTouches[0].clientX-self.offset.x)/self.scale.x;
+			var y = (evt.changedTouches[0].clientY-self.offset.y)/self.scale.y;
+			for (var i = 0; i < self.drains.length; i++) {
+				if(self.drains[i].checkTouchEnd(x,y)){
+					self.finishPath(self.drains[i], self.drains[i].x, self.drains[i].y);
+					return;
+				}
+			};
+			self.cancelPath();
+		});
+
 		this.addSource(this.elements.fire, 50, 50, 5);
 		this.addDrain(this.elements.fire, 750, 550, 5);
 
@@ -385,4 +425,4 @@ Game.prototype.start = function() {
 			window.requestAnimationFrame(update);
 		}
 		window.requestAnimationFrame(update);
-};
+	};
