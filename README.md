@@ -1,4 +1,4 @@
 Elemental-Connection
 ====================
 
-HTML 5 Game - LD30
+A simple HTML 5 Game made for LD30. Just load index.xhtml in your Browser of choice and have fun.
