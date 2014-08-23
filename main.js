@@ -1,10 +1,10 @@
-"use strict";
+'use strict';
 
-var SVG_NS = "http://www.w3.org/2000/svg";
-var XLINK_NS = "http://www.w3.org/1999/xlink";
+var SVG_NS = 'http://www.w3.org/2000/svg';
+var XLINK_NS = 'http://www.w3.org/1999/xlink';
 
-window.addEventListener("load", function(){
-	var svg = document.getElementById("svg");
+window.addEventListener('load', function(){
+	var svg = document.getElementById('svg');
 
 	window._game_= new Game(svg);
 	_game_.start();
@@ -27,7 +27,7 @@ function Path(element, x, y, number, parent){
 	domElement.setAttribute('stroke', element.color);
 	domElement.setAttribute('stroke-width', 2);
 
-	parent.appendChild(domElement);
+	parent.insertBefore(domElement, parent.firstChild);
 }
 
 Path.prototype.createSVGPathDescriptor = function(){
@@ -97,19 +97,116 @@ Path.prototype.update = function(delta){
 	};
 }
 
+function Source(element, x, y, amount, parent, game){
+	var domElement = document.createElementNS(SVG_NS, 'g');
+	domElement.setAttribute('transform', 'translate('+x+','+y+')');
+
+	var circle = document.createElementNS(SVG_NS, 'circle');
+	circle.setAttribute('cx', 0);
+	circle.setAttribute('cy', 0);
+	circle.setAttribute('r', 20);
+	circle.setAttribute('fill', 'transparent');
+	circle.setAttribute('stroke', element.color);
+	circle.setAttribute('stroke-width', 2);
+	domElement.appendChild(circle);
+
+	var fill = document.createElementNS(SVG_NS, "path");
+	fill.setAttribute('fill', element.color);
+	domElement.appendChild(fill);
+
+	this.element = element;
+	this.domElement = domElement;
+	this.fill = fill;
+	this.maxAmount = amount;
+	this.amount = amount;
+
+	this.updateFill();
+
+	var self = this;
+	parent.appendChild(domElement);
+	domElement.addEventListener("mousedown", function(evt){
+		if(self.path){
+			game.removePath(self.path);
+		}
+		self.path = game.startDrawingPath(self, x, y);
+	});
+}
+
+Source.prototype.updateFill = function(){
+	var y = -2*this.amount/this.maxAmount + 1;
+	var d;
+	if(y < -0.99){
+		var d = 'M0,-20 A20,20 0 1,1 0,20 A20,20 0 1,1 0,-20';
+	} else {
+		var x = Math.sqrt(1 - y*y);
+		x = x*20;
+		y = y*20;
+		var la = y>0 ? 0 : 1;
+		var d = 'M'+x+','+y+' A20,20 0 '+la+',1 '+(-x)+','+y+' L'+x+','+y;
+	}
+	this.fill.setAttribute('d', d);
+}
+
+function Drain(element, x, y, amount, parent, game){
+	var domElement = document.createElementNS(SVG_NS, 'g');
+	domElement.setAttribute('transform', 'translate('+x+','+y+')');
+
+	var border = document.createElementNS(SVG_NS, 'rect');
+	border.setAttribute('x', -20);
+	border.setAttribute('y', -20);
+	border.setAttribute('width', 40);
+	border.setAttribute('height', 40);
+	border.setAttribute('fill', 'transparent');
+	border.setAttribute('stroke', element.color);
+	border.setAttribute('stroke-width', 2);
+	domElement.appendChild(border);
+
+	var fill = document.createElementNS(SVG_NS, "rect");
+	fill.setAttribute('x', -20);
+	fill.setAttribute('width', 40);
+	fill.setAttribute('fill', element.color);
+	fill.setAttribute('stroke-width', 0);
+	domElement.appendChild(fill);
+
+	this.element = element;
+	this.domElement = domElement;
+	this.fill = fill;
+	this.maxAmount = amount;
+	this.amount = 0;
+
+	this.updateFill();
+
+	var self = this;
+	parent.appendChild(domElement);
+	domElement.addEventListener("mouseup", function(evt){
+		if(self.path){
+			game.removePath(self.path);
+		}
+		game.finishPath(self, x, y);
+		evt.stopPropagation();
+	});
+}
+
+Drain.prototype.updateFill = function(){
+	var y = -2*this.amount/this.maxAmount + 1;
+	y *= 20;
+	this.fill.setAttribute('y', y);
+	this.fill.setAttribute('height', 20-y);
+}
+
 function Game(svg){
 	this.elements = {
 		earth: {
-			color: "saddlebrown",
+			color: 'saddlebrown',
 		},
 		water: {
-			color: "blue",
+			color: 'blue',
 		},
 		air: {
-			color: "#FFFF60",
+			color: '#FFFF60',
 		},
 		fire: {
-			color: "red",
+			color: 'red',
 		},
 	}
 	this.svg = svg;
@@ -118,7 +215,7 @@ function Game(svg){
 
 	var self = this;
 	this.onResize();
-	window.addEventListener("resize", function(){
+	window.addEventListener('resize', function(){
 		self.onResize();
 	})
 }
@@ -132,11 +229,11 @@ Game.prototype.onResize = function(){
 	var height = Math.round(Math.min( dHeight, dWidth * ratio ));
 	var width =  Math.round(height / ratio);
 
-	this.svg.setAttribute("width", width + "px");
-	this.svg.setAttribute("height", height + "px");
+	this.svg.setAttribute('width', width + 'px');
+	this.svg.setAttribute('height', height + 'px');
 
-	this.svg.style.top = Math.round((dHeight - height)/2) + "px";
-	this.svg.style.left = Math.round((dWidth - width)/2) + "px";
+	this.svg.style.top = Math.round((dHeight - height)/2) + 'px';
+	this.svg.style.left = Math.round((dWidth - width)/2) + 'px';
 
 	this.scale = {
 		x: width / 800,
@@ -161,8 +258,21 @@ Game.prototype.update = function(delta){
 	}
 }
 
-Game.prototype.startDrawingPath = function(x, y){
-	this.newPath = this.addPath(this.elements.fire, x, y);
+Game.prototype.removePath = function(path){
+	if(path.source){
+		path.source.path = false;
+	}
+	if(path.drain){
+		path.drain.path = false;
+	}
+	this.paths.splice(this.paths.indexOf(path),1);
+	path.domElement.parentElement.removeChild(path.domElement);
+}
+
+Game.prototype.startDrawingPath = function(source, x, y){
+	this.newPath = this.addPath(source.element, x, y);
+	this.newPath.source = source;
+	return this.newPath;
 }
 
 Game.prototype.addPointToPath = function(x, y){
@@ -171,26 +281,40 @@ Game.prototype.addPointToPath = function(x, y){
 	}
 }
 
-Game.prototype.finishPath = function(x, y){
+Game.prototype.finishPath = function(drain, x, y){
 	if(this.newPath){
-		this.newPath.addPoint(x, y);
+		if(drain.element === this.newPath.element){
+			this.newPath.addPoint(x, y);
+			this.newPath.drain = drain;
+			this.newPath = false;
+		} else {
+			this.cancelPath();
+		}
+	}
+}
+
+Game.prototype.cancelPath = function(){
+	if(this.newPath){
+		this.removePath(this.newPath);
 		this.newPath = false;
 	}
 }
 
 Game.prototype.start = function() {
 		var self = this;
-		this.svg.addEventListener("mousedown", function(evt){
-			self.startDrawingPath(evt.layerX*self.scale.x, evt.layerY*self.scale.y);
-		});
-
-		this.svg.addEventListener("mousemove", function(evt){
+		this.svg.addEventListener('mousemove', function(evt){
 			self.addPointToPath(evt.layerX*self.scale.x, evt.layerY*self.scale.y);
 		});
 
-		this.svg.addEventListener("mouseup", function(evt){
-			self.finishPath(evt.layerX*self.scale.x, evt.layerY*self.scale.y);
+		this.svg.addEventListener('mouseup', function(evt){
+			self.cancelPath();
 		});
+
+		new Source(this.elements.fire, 50, 50, 5, this.svg, this);
+		new Drain(this.elements.fire, 750, 550, 5, this.svg, this);
+
+		new Source(this.elements.water, 750, 50, 5, this.svg, this);
+		new Drain(this.elements.water, 50, 550, 5, this.svg, this);
 
 		var last = new Date().valueOf();
 		function update(){

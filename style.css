@@ -12,6 +12,6 @@ svg {
 	position: absolute;
 }
 
-path {
+svg>path {
 	fill: transparent;
 }
