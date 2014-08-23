@@ -3,7 +3,11 @@
 	padding: 0;
 }
 
-body {
+body, html {
 	background-color: black;
 	color: white;
+}
+
+svg {
+	position: absolute;
 }
