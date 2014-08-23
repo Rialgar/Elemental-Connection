@@ -5,53 +5,27 @@ var XLINK_NS = "http://www.w3.org/1999/xlink";
 
 window.addEventListener("load", function(){
 	var svg = document.getElementById("svg");
-	
-	function onResize(){
-		var ratio = 3/4;
-
-		var dWidth = document.documentElement.clientWidth;
-		var dHeight = document.documentElement.clientHeight;
-		
-		var height = Math.round(Math.min( dHeight, dWidth * ratio ));
-		var width =  Math.round(height / ratio);
-
-		svg.setAttribute("width", width + "px");
-		svg.setAttribute("height", height + "px");
-
-		svg.style.top = Math.round((dHeight - height)/2) + "px";
-		svg.style.left = Math.round((dWidth - width)/2) + "px";
-	}
-
-	onResize();
-
-	window.addEventListener("resize", onResize);
 
 	window._game_= new Game(svg);
 	_game_.start();
 });
 
-function Path(element, points, number, parent){
+function Path(element, x, y, number, parent){
 	var domElement = document.createElementNS(SVG_NS, 'path');
 	var id = 'path' + number;
 
 	this.element = element;
 	this.id = id;
 	this.domElement = domElement;
-	this.points = points;
+	this.points = [];
 	this.circles = [];
-
 	this.length = 0;
-	for (var i = 1; i < this.points.length; i++) {
-		var dx = this.points[i].x-this.points[i-1].x;
-		var dy = this.points[i].y-this.points[i-1].y;
-		this.points[i].length = Math.sqrt(dx*dx+dy*dy);
-		this.length += this.points[i].length;
-	};
+
+	this.addPoint(x, y);
 
 	domElement.setAttribute('id', id);
 	domElement.setAttribute('stroke', element.color);
 	domElement.setAttribute('stroke-width', 2);
-	this.createSVGPathDescriptor();
 
 	parent.appendChild(domElement);
 }
@@ -71,10 +45,12 @@ Path.prototype.addPoint = function(x,y){
 	this.createSVGPathDescriptor();
 
 	var l = this.points.length-1;
-	var dx = this.points[l].x-this.points[l-1].x;
-	var dy = this.points[l].y-this.points[l-1].y;
-	this.points[l].length = Math.sqrt(dx*dx+dy*dy);
-	this.length += this.points[l].length;
+	if(l > 0){
+		var dx = this.points[l].x-this.points[l-1].x;
+		var dy = this.points[l].y-this.points[l-1].y;
+		this.points[l].length = Math.sqrt(dx*dx+dy*dy);
+		this.length += this.points[l].length;
+	}
 }
 
 Path.prototype.addCircle = function(onEnd){
@@ -139,14 +115,40 @@ function Game(svg){
 	this.svg = svg;
 	this.paths = [];
 	this.paused = false;
+
+	var self = this;
+	this.onResize();
+	window.addEventListener("resize", function(){
+		self.onResize();
+	})
 }
 
+Game.prototype.onResize = function(){
+	var ratio = 3/4;
+
+	var dWidth = document.documentElement.clientWidth;
+	var dHeight = document.documentElement.clientHeight;
+	
+	var height = Math.round(Math.min( dHeight, dWidth * ratio ));
+	var width =  Math.round(height / ratio);
+
+	this.svg.setAttribute("width", width + "px");
+	this.svg.setAttribute("height", height + "px");
+
+	this.svg.style.top = Math.round((dHeight - height)/2) + "px";
+	this.svg.style.left = Math.round((dWidth - width)/2) + "px";
+
+	this.scale = {
+		x: width / 800,
+		y: height / 600
+	};
+}
 Game.prototype.togglePause = function(){
 	this.paused ^= 1;
 }
 
-Game.prototype.addPath = function(element, points){
-	var path = new Path(element, points, this.paths.length, this.svg);
+Game.prototype.addPath = function(element, x, y){
+	var path = new Path(element, x, y, this.paths.length, this.svg);
 	this.paths.push(path);
 	return path;
 }
@@ -159,13 +161,37 @@ Game.prototype.update = function(delta){
 	}
 }
 
-Game.prototype.start = function() {
-		var path = this.addPath(this.elements.fire, [{x:20,y:20}]);
-		path.addPoint(780, 20);
-		path.addPoint(780, 580);
-		path.addPoint(20, 580);
+Game.prototype.startDrawingPath = function(x, y){
+	this.newPath = this.addPath(this.elements.fire, x, y);
+}
 
+Game.prototype.addPointToPath = function(x, y){
+	if(this.newPath){
+		this.newPath.addPoint(x, y);
+	}
+}
+
+Game.prototype.finishPath = function(x, y){
+	if(this.newPath){
+		this.newPath.addPoint(x, y);
+		this.newPath = false;
+	}
+}
+
+Game.prototype.start = function() {
 		var self = this;
+		this.svg.addEventListener("mousedown", function(evt){
+			self.startDrawingPath(evt.layerX*self.scale.x, evt.layerY*self.scale.y);
+		});
+
+		this.svg.addEventListener("mousemove", function(evt){
+			self.addPointToPath(evt.layerX*self.scale.x, evt.layerY*self.scale.y);
+		});
+
+		this.svg.addEventListener("mouseup", function(evt){
+			self.finishPath(evt.layerX*self.scale.x, evt.layerY*self.scale.y);
+		});
+
 		var last = new Date().valueOf();
 		function update(){
 			var now = new Date().valueOf();

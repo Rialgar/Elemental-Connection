@@ -11,3 +11,7 @@ body, html {
 svg {
 	position: absolute;
 }
+
+path {
+	fill: transparent;
+}
