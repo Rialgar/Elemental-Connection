@@ -10,7 +10,7 @@ window.addEventListener('load', function(){
 	_game_.start();
 });
 
-function ColissionTree(points){
+function CollissionTree(points){
 	this.bbox = {
 		min:{
 			x: Infinity,
@@ -21,65 +21,25 @@ function ColissionTree(points){
 			y: -Infinity
 		}
 	}
-	var midX = [];
-	var midY = [];
+	var left = [];
+	var right = [];
 	for (var i = 0; i < points.length; i++) {
 		this.bbox.min.x=Math.min(this.bbox.min.x,points[i].x);
 		this.bbox.min.y=Math.min(this.bbox.min.y,points[i].y);
 		this.bbox.max.x=Math.max(this.bbox.max.x,points[i].x);
 		this.bbox.max.y=Math.max(this.bbox.max.y,points[i].y);
-		midX.push(points[i]);
-		midY.push(points[i]);
+		if(points.length > 16){ //subdivide only if a sufficient number of points is present
+			if(i <= Math.floor(points.length/2)){
+				left.push(points[i]);
+			}
+			if(i >= Math.floor(points.length/2)){
+				right.push(points[i]);
+			}
+		}
 	};
 	if(points.length > 16){ //subdivide only if a sufficient number of points is present
-		midX.sort(function(a,b){return a.x-b.x});
-		midY.sort(function(a,b){return a.y-b.y});
-
-		midX = midX.splice(Math.ceil(midX.length/2)-1, 2 - midX.length%2);
-		midY = midY.splice(Math.ceil(midY.length/2)-1, 2 - midY.length%2);
-		var median = {
-			x: 0,
-			y: 0
-		};
-		for (var i = 0; i < midX.length; i++) {
-			median.x += midX[i].x;
-			median.y += midY[i].y;
-		};
-		median.x /= midX.length;
-		median.y /= midY.length;
-
-		var topLeft = [];
-		var	topRight = [];
-		var bottomLeft = [];
-		var bottomRight = [];
-
-		var last = false;
-		for (var i = 0; i < points.length; i++) {
-			var next = false;
-			var point = points[i];
-			if(point.x <= median.x){
-				if(point.y <= median.y){
-					next = topLeft;
-				} else {
-					next = bottomLeft;
-				}
-			} else if(point.y <= median.y){
-				next = topRight;
-			} else {
-				next = bottomRight;
-			}
-			next.push(point);
-			if(last && last != next){
-				last.push(point); //because we care for line segments
-			}
-			last = next;
-		}
-
-		this.median = median;
-		this.topLeft = new ColissionTree(topLeft);
-		this.topRight = new ColissionTree(topRight);
-		this.bottomLeft = new ColissionTree(bottomLeft);
-		this.bottomRight = new ColissionTree(bottomRight);
+		this.left = new CollissionTree(left);
+		this.right = new CollissionTree(right);
 	} else {
 		this.points = points;
 	}
@@ -116,7 +76,7 @@ function linesCollide(a, b, c, d){
     return (r >= 0 && r <= 1) && (s >= 0 && s <= 1);
 };
 
-ColissionTree.prototype.collides = function(from, to){
+CollissionTree.prototype.collides = function(from, to){
 		if(
 			(from.x < this.bbox.min.x && to.x < this.bbox.min.x) ||
 			(from.x > this.bbox.max.x && to.x > this.bbox.max.x) ||
@@ -124,35 +84,15 @@ ColissionTree.prototype.collides = function(from, to){
 			(from.y > this.bbox.max.y && to.y > this.bbox.max.y)
 		){
 			return false
-		} else if(!this.points){ //subdivided, check correct subtree
-			var p = [from, to];
-			var last = false;
-			for (var i = 0; i < p.length; i++) {
-				var point = p[i];
-				var next = false;
-				if(point.x <= this.median.x){
-					if(point.y <= this.median.y){
-						next = this.topLeft;
-					} else {
-						next = this.bottomLeft;
-					}
-				} else if(point.y <= this.median.y){
-					next = this.topRight;
-				} else {
-					next = this.bottomRight;
-				}
-				if(next != last && next.collides(from,to)){
-					return true;
-				}
-				last = next;
-			}
-			return false;
+		} else if(!this.points){ //subdivided, check subtrees
+			return this.left.collides(from, to) || this.right.collides(from, to);
 		} else { //not subdivided, check own line segements
 			for (var i = 1; i < this.points.length; i++) {
 				if(linesCollide(from, to, this.points[i-1], this.points[i])){
 					return true;
 				}
-			};
+			}
+			return false;
 		}
 }
 
@@ -204,12 +144,12 @@ Path.prototype.addPoint = function(x,y){
 
 Path.prototype.finalize = function(){
 	this.finalized = true;
-	this.colissionTree = new ColissionTree(this.points);
+	this.collissionTree = new CollissionTree(this.points);
 }
 
 Path.prototype.collides = function(from, to){
 	if(this.finalized){
-		return this.colissionTree.collides(from, to);
+		return this.collissionTree.collides(from, to);
 	}
 }
 
