@@ -723,12 +723,14 @@ Game.prototype.start = function() {
 	this.svg.addEventListener('touchend', function(evt){
 		var x = (evt.changedTouches[0].clientX-self.offset.x)/self.scale.x;
 		var y = (evt.changedTouches[0].clientY-self.offset.y)/self.scale.y;
-		for (var i = 0; i < self.drains.length; i++) {
-			if(self.drains[i].includes({x:x,y:y})){
-				self.finishPath(self.drains[i], self.drains[i].x, self.drains[i].y);
-				return;
-			}
-		};
+		for(var key in {drains:1, converters:1}){
+			for (var i = 0; i < self[key].length; i++) {
+				if(self[key][i].includes({x:x,y:y})){
+					self.finishPath(self[key][i], self[key][i].x, self[key][i].y);
+					return;
+				}
+			};
+		}
 		self.cancelPath();
 	});
 
