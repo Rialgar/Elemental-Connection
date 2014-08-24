@@ -3,12 +3,83 @@
 var SVG_NS = 'http://www.w3.org/2000/svg';
 var XLINK_NS = 'http://www.w3.org/1999/xlink';
 
-window.addEventListener('load', function(){
-	var svg = document.getElementById('svg');
+function linesCollide(a, b, c, d){
+	var denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
+    var numerator1 = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
+    var numerator2 = ((a.y - c.y) * (b.x - a.x)) - ((a.x - c.x) * (b.y - a.y));
 
-	window._game_= new Game(svg);
-	_game_.start();
-});
+    if (denominator == 0){
+    	if(numerator1 == 0 && numerator2 == 0){
+    		if(a.x != b.x){
+    			var ac = a.x-c.x,
+    			ad = a.x-d.x,
+    			bc = b.x-c.x,
+    			bd = b.x-d.x;
+    			return ac*ad <= 0 || bc*bd <= 0 || ac*bc <=0 || ad*bd <= 0;
+    		} else {
+    			var ac = a.y-c.y,
+    			ad = a.y-d.y,
+    			bc = b.y-c.y,
+    			bd = b.y-d.y;
+    			return ac*ad <= 0 || bc*bd <= 0 || ac*bc <=0 || ad*bd <= 0;
+    		}
+    	} else {
+    		return false;
+    	};
+    }
+
+    var r = numerator1 / denominator;
+    var s = numerator2 / denominator;
+
+    return (r >= 0 && r <= 1) && (s >= 0 && s <= 1);
+};
+
+function rectCollides(left, right, top, bottom, from, to){
+	var p = [from.x - to.x, to.x  - from.x, from.y - to.y, to.y   - from.y];
+    var q = [from.x - left, right - from.x, from.y - top , bottom - from.y];
+    var u1 = -Infinity
+    var u2 = +Infinity;
+
+    for (var i = 0; i < 4; i++) {
+            if (p[i] == 0) {	//line parallel to axis
+                    if (q[i] < 0) //line lies outside of rectangle
+                            return false;
+            }
+            else {
+                    var t = q[i] / p[i];	//distance on line from start to intersection
+                    if (p[i] < 0 && u1 < t) //line crosses in, take last crossing
+                            u1 = t;
+                    else if (p[i] > 0 && u2 > t) //line crosses out, take first crossing
+                            u2 = t;
+            }
+    }
+
+    return (u2 > u1 && 1 > u1 && u2 > 0) //leaving after entering && entering before end && leaving after begin 
+}
+
+function circleCollides(cx, cy, r, from, to){
+	var vx = to.x - from.x;
+	var vy = to.y - from.y;
+
+	var fx = from.x - cx;
+	var fy = from.y - cy;
+
+	var a = vx*vx + vy*vy;
+	var b = 2 * (vx*fx + vy*fy);
+	var c = (fx*fx+fy*fy) - r*r;
+
+	var discriminant = (b*b - 4*a*c)
+
+	if(discriminant < 0){
+		return false;
+	}
+
+	discriminant = Math.sqrt(discriminant);
+	var t1 = (-b - discriminant)/(2*a);
+	var t2 = (-b + discriminant)/(2*a);
+
+	return (0 <= t1 && t1 <= 1) || (0 <= t2 && t2 <= 1);
+}
 
 function CollissionTree(points){
 	this.bbox = {
@@ -45,37 +116,6 @@ function CollissionTree(points){
 	}
 };
 
-function linesCollide(a, b, c, d){
-	var denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
-    var numerator1 = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
-    var numerator2 = ((a.y - c.y) * (b.x - a.x)) - ((a.x - c.x) * (b.y - a.y));
-
-    if (denominator == 0){
-    	if(numerator1 == 0 && numerator2 == 0){
-    		if(a.x != b.x){
-    			var ac = a.x-c.x,
-    			ad = a.x-d.x,
-    			bc = b.x-c.x,
-    			bd = b.x-d.x;
-    			return ac*ad <= 0 || bc*bd <= 0 || ac*bc <=0 || ad*bd <= 0;
-    		} else {
-    			var ac = a.y-c.y,
-    			ad = a.y-d.y,
-    			bc = b.y-c.y,
-    			bd = b.y-d.y;
-    			return ac*ad <= 0 || bc*bd <= 0 || ac*bc <=0 || ad*bd <= 0;
-    		}
-    	} else {
-    		return false;
-    	};
-    }
-
-    var r = numerator1 / denominator;
-    var s = numerator2 / denominator;
-
-    return (r >= 0 && r <= 1) && (s >= 0 && s <= 1);
-};
-
 CollissionTree.prototype.collides = function(from, to){
 		if(
 			(from.x < this.bbox.min.x && to.x < this.bbox.min.x) ||
@@ -96,12 +136,10 @@ CollissionTree.prototype.collides = function(from, to){
 		}
 }
 
-function Path(element, x, y, number, parent){
-	var domElement = document.createElementNS(SVG_NS, 'path');
-	var id = 'path' + number;
+function Path(element, x, y, parent){
+	var domElement = document.createElementNS(SVG_NS, 'polyline');
 
 	this.element = element;
-	this.id = id;
 	this.domElement = domElement;
 	this.points = [];
 	this.circles = [];
@@ -109,7 +147,6 @@ function Path(element, x, y, number, parent){
 
 	this.addPoint(x, y);
 
-	domElement.setAttribute('id', id);
 	domElement.setAttribute('stroke', element.color);
 	domElement.setAttribute('stroke-width', 2);
 
@@ -118,12 +155,12 @@ function Path(element, x, y, number, parent){
 
 Path.prototype.createSVGPathDescriptor = function(){
 	var p = this.points[0];
-	var d = 'M'+p.x+','+p.y;
+	var d = p.x+','+p.y;
 	for (var i = 1; i < this.points.length; i++) {
 		p = this.points[i];
-		d += ' L'+p.x+','+p.y;
+		d += ' '+p.x+','+p.y;
 	};
-	this.domElement.setAttribute('d', d);
+	this.domElement.setAttribute('points', d);
 }
 
 Path.prototype.addPoint = function(x,y){
@@ -147,8 +184,8 @@ Path.prototype.finalize = function(){
 	this.collissionTree = new CollissionTree(this.points);
 }
 
-Path.prototype.collides = function(from, to){
-	if(this.finalized){
+Path.prototype.collides = function(element, from, to){
+	if(this.element != element && this.finalized){
 		return this.collissionTree.collides(from, to);
 	}
 }
@@ -205,6 +242,9 @@ Path.prototype.update = function(delta){
 	};
 }
 
+var SD_SIZE = 30;
+var SD_SIZE_SQ = SD_SIZE*SD_SIZE;
+
 function Source(element, x, y, amount, parent, game){
 	var domElement = document.createElementNS(SVG_NS, 'g');
 	domElement.setAttribute('transform', 'translate('+x+','+y+')');
@@ -212,7 +252,7 @@ function Source(element, x, y, amount, parent, game){
 	var circle = document.createElementNS(SVG_NS, 'circle');
 	circle.setAttribute('cx', 0);
 	circle.setAttribute('cy', 0);
-	circle.setAttribute('r', 20);
+	circle.setAttribute('r', SD_SIZE);
 	circle.setAttribute('fill', 'transparent');
 	circle.setAttribute('stroke', element.color);
 	circle.setAttribute('stroke-width', 2);
@@ -229,6 +269,8 @@ function Source(element, x, y, amount, parent, game){
 	this.amount = amount;
 	this.sendInterval = 500;
 	this.sendNextIn = 0;
+	this.x = x;
+	this.y = y;
 
 	this.updateFill();
 
@@ -248,17 +290,27 @@ function Source(element, x, y, amount, parent, game){
 	});
 }
 
+Source.prototype.includes = function(p){
+	var dx = this.x-p.x;
+	var dy = this.y-p.y;
+	return (dx*dx + dy*dy) <= SD_SIZE_SQ;
+}
+
+Source.prototype.collides = function(element, from, to){
+	return element != this.element && circleCollides(this.x, this.y, SD_SIZE, from, to);
+}
+
 Source.prototype.updateFill = function(){
 	var y = -2*this.amount/this.maxAmount + 1;
 	var d;
 	if(y < -0.99){
-		var d = 'M0,-20 A20,20 0 1,1 0,20 A20,20 0 1,1 0,-20';
+		var d = 'M0,-SD ASD,SD 0 1,1 0,SD ASD,SD 0 1,1 0,-SD'.replace(/SD/g, SD_SIZE);
 	} else {
 		var x = Math.sqrt(1 - y*y);
-		x = x*20;
-		y = y*20;
+		x = x*SD_SIZE;
+		y = y*SD_SIZE;
 		var la = y>0 ? 0 : 1;
-		var d = 'M'+x+','+y+' A20,20 0 '+la+',1 '+(-x)+','+y+' L'+x+','+y;
+		var d = ('M'+x+','+y+' ASD,SD 0 '+la+',1 '+(-x)+','+y+' Z').replace(/SD/g, SD_SIZE);
 	}
 	this.fill.setAttribute('d', d);
 }
@@ -290,18 +342,18 @@ function Drain(element, x, y, amount, parent, game){
 	domElement.setAttribute('transform', 'translate('+x+','+y+')');
 
 	var border = document.createElementNS(SVG_NS, 'rect');
-	border.setAttribute('x', -20);
-	border.setAttribute('y', -20);
-	border.setAttribute('width', 40);
-	border.setAttribute('height', 40);
+	border.setAttribute('x', -SD_SIZE);
+	border.setAttribute('y', -SD_SIZE);
+	border.setAttribute('width', 2*SD_SIZE);
+	border.setAttribute('height', 2*SD_SIZE);
 	border.setAttribute('fill', 'transparent');
 	border.setAttribute('stroke', element.color);
 	border.setAttribute('stroke-width', 2);
 	domElement.appendChild(border);
 
 	var fill = document.createElementNS(SVG_NS, "rect");
-	fill.setAttribute('x', -20);
-	fill.setAttribute('width', 40);
+	fill.setAttribute('x', -SD_SIZE);
+	fill.setAttribute('width', 2*SD_SIZE);
 	fill.setAttribute('fill', element.color);
 	fill.setAttribute('stroke-width', 0);
 	domElement.appendChild(fill);
@@ -319,26 +371,38 @@ function Drain(element, x, y, amount, parent, game){
 	var self = this;
 	parent.appendChild(domElement);
 	domElement.addEventListener("mouseup", function(evt){
-		if(self.path){
-			game.removePath(self.path);
-		}
 		game.finishPath(self, x, y);
 		evt.stopPropagation();
 	});
 }
 
-Drain.prototype.checkTouchEnd = function(x,y){
-	if(x >= this.x-20 && x <= this.x+20 && y >= this.y-20 && y  <= this.y+20){
+Drain.prototype.acceptPath = function(path){
+	if(this.element == path.element){
+		if(this.path){
+			this.game.removePath(self.path);
+		}
+		this.path = path;
 		return true;
 	}
 	return false;
+}
+
+Drain.prototype.includes = function(p){
+	return  p.x >= this.x - SD_SIZE &&
+			p.x <= this.x + SD_SIZE &&
+			p.y >= this.y - SD_SIZE &&
+			p.y <= this.y + SD_SIZE;
 };
+
+Drain.prototype.collides = function(element, from, to){
+	return element != this.element && rectCollides(this.x - SD_SIZE, this.x + SD_SIZE, this.y - SD_SIZE, this.y + SD_SIZE, from, to);
+}
 
 Drain.prototype.updateFill = function(){
 	var y = -2*this.amount/this.maxAmount + 1;
-	y *= 20;
+	y *= SD_SIZE;
 	this.fill.setAttribute('y', y);
-	this.fill.setAttribute('height', 20-y);
+	this.fill.setAttribute('height', SD_SIZE - y);
 }
 
 Drain.prototype.setAmount = function(amount){
@@ -353,7 +417,139 @@ Drain.prototype.removePath = function(){
 
 Drain.prototype.addUnit = function(){
 	this.setAmount(this.amount+1);
+}
+
+function Converter(element, x, y, amount, parent, game){
+	var domElement = document.createElementNS(SVG_NS, 'g');
+	domElement.setAttribute('transform', 'translate('+x+','+y+')');
+
+	var border = document.createElementNS(SVG_NS, "polygon");
+	border.setAttribute('points', (-SD_SIZE)+','+SD_SIZE+' '+SD_SIZE+','+SD_SIZE+' 0,'+(-SD_SIZE));
+	border.setAttribute('stroke', element.color);
+	border.setAttribute('stroke-width', 2);
+	border.setAttribute('fill', 'transparent');
+	domElement.appendChild(border);
+
+	var fill = document.createElementNS(SVG_NS, "polygon");
+	fill.setAttribute('fill', element.color);
+	domElement.appendChild(fill);
+
+	this.x = x;
+	this.y = y;
+	this.element = element;
+	this.added = 0;
+	this.removed = 0;
+	this.amount = 0;
+	this.maxAmount = amount;
+	this.fill = fill;
+	this.game = game;
+	this.sendInterval = 500;
+	this.sendNextIn = 0;
 	this.updateFill();
+
+	var self = this;
+	parent.appendChild(domElement);
+	domElement.addEventListener("mousedown", function(evt){
+		if(self.outgoing){
+			game.removePath(self.outgoing);
+		}
+		self.outgoing = game.startDrawingPath(self, x, y);
+	});
+	domElement.addEventListener("touchstart", function(evt){
+		if(self.outgoing){
+			game.removePath(self.outgoing);
+		}
+		self.outgoing = game.startDrawingPath(self, x, y);
+	});
+
+	domElement.addEventListener("mouseup", function(evt){
+		game.finishPath(self, x, y);
+		evt.stopPropagation();
+	});
+}
+
+Converter.prototype.updateFill = function(){
+	var y = 1-this.amount/this.maxAmount;
+	var x = y;
+	y = (y*2 - 1) * SD_SIZE;
+	x *= SD_SIZE;
+
+	var points = (-SD_SIZE)+','+SD_SIZE+' '+SD_SIZE+','+SD_SIZE+' '+x+','+y+' '+(-x)+','+y;
+	this.fill.setAttribute('points', points);
+}
+
+Converter.prototype.acceptPath = function(path){
+	if(this.incoming){
+		this.game.removePath(this.incoming);
+	}
+	this.incoming = path;
+	return true;
+}
+
+Converter.prototype.collissionFree = function(path, other, from, to){
+	return path == this.outgoing &&
+		other == this.incoming &&
+		(this.includes(from) || 
+		this.includes(to))
+}
+
+Converter.prototype.removePath = function(path){
+	if(path == this.incoming){
+		this.incoming = false;
+		this.added = 0;
+		this.setAmount(0);
+		if(this.outgoing){
+			this.game.removePath(this.outgoing);
+		}
+	}
+	if(path == this.outgoing){
+		this.outgoing = false;
+		this.removed = 0;
+		this.setAmount(this.added - this.removed);
+	}
+}
+
+Converter.prototype.addUnit = function (){
+	this.added++;
+	this.setAmount(this.added - this.removed);
+}
+
+Converter.prototype.update = function(delta){
+	if(this.amount > 0 && this.outgoing && this.outgoing.drain){
+		this.sendNextIn -= delta;
+		if(this.sendNextIn <= 0){
+			this.outgoing.addCircle(-this.sendNextIn);
+			this.sendNextIn = this.sendInterval;
+			this.removed += 1;
+			this.setAmount(this.added - this.removed);
+		}
+	}
+}
+
+Converter.prototype.setAmount = Drain.prototype.setAmount;
+Converter.prototype.includes = Drain.prototype.includes;
+
+function Obstacle(element, cornerA, cornerB, parent){
+	this.left = Math.min(cornerA.x, cornerB.x);
+	this.top = Math.min(cornerA.y, cornerB.y);
+	this.right = Math.max(cornerA.x, cornerB.x);
+	this.bottom = Math.max(cornerA.y, cornerB.y);
+
+	var domElement = document.createElementNS(SVG_NS, 'rect');
+	domElement.setAttribute('x', this.left);
+	domElement.setAttribute('y', this.top);
+	domElement.setAttribute('width', this.right - this.left);
+	domElement.setAttribute('height', this.bottom - this.top);
+	domElement.setAttribute('fill', element.color);
+
+	parent.appendChild(domElement);
+
+	this.domElement = domElement;
+	this.element = element;
+}
+
+Obstacle.prototype.collides = function(element, from, to){
+	return this.element != element && rectCollides(this.left, this.right, this.top, this.bottom, from, to);		
 }
 
 function Game(svg){
@@ -370,11 +566,18 @@ function Game(svg){
 		fire: {
 			color: 'red',
 		},
+		wall: {
+			color: 'gray'
+		}
 	}
 	this.svg = svg;
+
 	this.paths = [];
 	this.sources = [];
 	this.drains = [];
+	this.obstacles = [];
+	this.converters = [];
+
 	this.paused = false;
 
 	var self = this;
@@ -414,28 +617,27 @@ Game.prototype.togglePause = function(){
 }
 
 Game.prototype.addPath = function(element, x, y){
-	var path = new Path(element, x, y, this.paths.length, this.svg);
+	var path = new Path(element, x, y, this.svg);
 	this.paths.push(path);
 	return path;
 }
 
 Game.prototype.update = function(delta){
 	if(!this.paused){
-		for (var i = 0; i < this.paths.length; i++) {
-			this.paths[i].update(delta);
-		};
-		for (var i = 0; i < this.sources.length; i++) {
-			this.sources[i].update(delta);
-		};
+		for(var key in {paths:1, sources:1, converters:1}){
+			for (var i = 0; i < this[key].length; i++) {
+				this[key][i].update(delta);
+			};
+		}
 	}
 }
 
 Game.prototype.removePath = function(path){
 	if(path.source){
-		path.source.removePath();
+		path.source.removePath(path);
 	}
 	if(path.drain){
-		path.drain.removePath();
+		path.drain.removePath(path);
 	}
 	this.paths.splice(this.paths.indexOf(path),1);
 	path.domElement.parentElement.removeChild(path.domElement);
@@ -450,20 +652,24 @@ Game.prototype.startDrawingPath = function(source, x, y){
 Game.prototype.addPointToPath = function(x, y){
 	if(this.newPath){
 		var last = this.newPath.points[this.newPath.points.length-1];
-		for (var i = 0; i < this.paths.length; i++) {
-			var p = this.paths[i];
-			if(p.element != this.newPath.element && p.collides(last, {x:x,y:y})){
-				return;
+		var point = {x:x,y:y};
+		for (var key in {paths:1, obstacles:1, sources:1, drains: 1}){
+			for (var i = 0; i < this[key].length; i++) {
+				if(!this.newPath.source.collissionFree || !this.newPath.source.collissionFree(this.newPath, this[key][i], last, point)){
+					if(this[key][i].collides(this.newPath.element, last, point)){
+						return false;
+					}
+				}
 			}
-		};
+		}
 		this.newPath.addPoint(x, y);
+		return true;
 	}
 }
 
 Game.prototype.finishPath = function(drain, x, y){
 	if(this.newPath){
-		if(drain.element === this.newPath.element){
-			this.newPath.addPoint(x, y);
+		if(this.addPointToPath(x,y) && drain.acceptPath(this.newPath)){
 			this.newPath.drain = drain;
 			this.newPath.finalize();
 			this.newPath = false;
@@ -488,49 +694,75 @@ Game.prototype.addDrain = function(element, x, y, amount){
 	this.drains.push(new Drain(element, x, y, amount, this.svg, this));
 }
 
+Game.prototype.addConverter = function(element, x, y, amount){
+	this.converters.push(new Converter(element, x, y, amount, this.svg, this));
+}
+
+Game.prototype.addObstacle = function(element, cornerA, cornerB){
+	this.obstacles.push(new Obstacle(element, cornerA, cornerB, this.svg));
+}
+
 Game.prototype.start = function() {
-		var self = this;
-		this.svg.addEventListener('mousemove', function(evt){
-			self.addPointToPath(evt.layerX/self.scale.x, evt.layerY/self.scale.y);
-		});
+	var self = this;
+	this.svg.addEventListener('mousemove', function(evt){
+		self.addPointToPath(evt.layerX/self.scale.x, evt.layerY/self.scale.y);
+	});
 
-		this.svg.addEventListener('mouseup', function(evt){
-			self.cancelPath();
-		});
+	this.svg.addEventListener('mouseup', function(evt){
+		self.cancelPath();
+	});
 
-		document.addEventListener('touchmove', function(evt){
-			self.addPointToPath(
-				(evt.touches[0].clientX-self.offset.x)/self.scale.x,
-				(evt.touches[0].clientY-self.offset.y)/self.scale.y
-			);
-			evt.preventDefault();
-		});
+	document.addEventListener('touchmove', function(evt){
+		self.addPointToPath(
+			(evt.touches[0].clientX-self.offset.x)/self.scale.x,
+			(evt.touches[0].clientY-self.offset.y)/self.scale.y
+		);
+		evt.preventDefault();
+	});
 
-		this.svg.addEventListener('touchend', function(evt){
-			var x = (evt.changedTouches[0].clientX-self.offset.x)/self.scale.x;
-			var y = (evt.changedTouches[0].clientY-self.offset.y)/self.scale.y;
-			for (var i = 0; i < self.drains.length; i++) {
-				if(self.drains[i].checkTouchEnd(x,y)){
-					self.finishPath(self.drains[i], self.drains[i].x, self.drains[i].y);
-					return;
-				}
-			};
-			self.cancelPath();
-		});
+	this.svg.addEventListener('touchend', function(evt){
+		var x = (evt.changedTouches[0].clientX-self.offset.x)/self.scale.x;
+		var y = (evt.changedTouches[0].clientY-self.offset.y)/self.scale.y;
+		for (var i = 0; i < self.drains.length; i++) {
+			if(self.drains[i].includes({x:x,y:y})){
+				self.finishPath(self.drains[i], self.drains[i].x, self.drains[i].y);
+				return;
+			}
+		};
+		self.cancelPath();
+	});
 
-		this.addSource(this.elements.fire, 50, 50, 5);
-		this.addDrain(this.elements.fire, 750, 550, 5);
+	this.addSource(this.elements.fire, 50, 550, 5);
+	this.addDrain(this.elements.air, 750, 550, 5);
 
-		this.addSource(this.elements.water, 750, 50, 5);
-		this.addDrain(this.elements.water, 50, 550, 5);
+	this.addSource(this.elements.water, 750, 50, 5);
+	this.addDrain(this.elements.earth, 50, 50, 5);
 
-		var last = new Date().valueOf();
-		function update(){
-			var now = new Date().valueOf();
-			var delta = Math.min(now-last, 100);
-			last = now;
-			self.update(delta);
-			window.requestAnimationFrame(update);
-		}
+	this.addConverter(this.elements.air, 400, 100, 5);
+	this.addConverter(this.elements.earth, 400, 500, 5);
+
+	this.addObstacle(this.elements.wall, {x:300, y:280}, {x:500, y:320});
+	
+	this.addObstacle(this.elements.fire, {x:300, y:-10}, {x:340, y:280});
+	this.addObstacle(this.elements.air, {x:460, y:-10}, {x:500, y:280});
+
+	this.addObstacle(this.elements.earth, {x:300, y:320}, {x:340, y:610});
+	this.addObstacle(this.elements.water, {x:460, y:320}, {x:500, y:610});
+
+	var last = new Date().valueOf();
+	function update(){
+		var now = new Date().valueOf();
+		var delta = Math.min(now-last, 100);
+		last = now;
+		self.update(delta);
 		window.requestAnimationFrame(update);
-	};
+	}
+	window.requestAnimationFrame(update);
+};
+
+window.addEventListener('load', function(){
+	var svg = document.getElementById('svg');
+
+	window._game_= new Game(svg);
+	_game_.start();
+});
