@@ -12,6 +12,11 @@ svg {
 	position: absolute;
 }
 
-svg>path {
+polyline {
 	fill: transparent;
+}
+
+div {
+	opacity: 0;
+	transition: opacity 0.5s;
 }

@@ -425,6 +425,10 @@ Drain.prototype.addUnit = function(){
 	this.setAmount(this.amount+1);
 }
 
+Drain.prototype.isFull = function(){
+	return this.amount == this.maxAmount;
+}
+
 function Converter(element, x, y, amount, parent, game){
 	var domElement = document.createElementNS(SVG_NS, 'g');
 	domElement.setAttribute('transform', 'translate('+x+','+y+')');
@@ -447,6 +451,7 @@ function Converter(element, x, y, amount, parent, game){
 	this.removed = 0;
 	this.amount = 0;
 	this.maxAmount = amount;
+	this.domElement = domElement;
 	this.fill = fill;
 	this.game = game;
 	this.sendInterval = 500;
@@ -583,6 +588,7 @@ function Game(svg){
 		}
 	}
 	this.svg = svg;
+	this.currentLevel = 0;
 
 	this.paths = [];
 	this.sources = [];
@@ -597,6 +603,18 @@ function Game(svg){
 	window.addEventListener('resize', function(){
 		self.onResize();
 	})
+}
+
+Game.prototype.reset = function(){
+	while(this.paths.length > 0){
+		this.removePath(this.paths[0]);
+	}
+	for(var key in {sources:1, drains:1, obstacles:1, converters:1}){
+		this[key].forEach(function(ea){
+			ea.domElement.parentElement.removeChild(ea.domElement);
+		});
+		this[key].length = 0;
+	}
 }
 
 Game.prototype.onResize = function(){
@@ -635,11 +653,18 @@ Game.prototype.addPath = function(element, x, y){
 }
 
 Game.prototype.update = function(delta){
-	if(!this.paused){
+	if(!this.paused && !this.transitioning){
 		for(var key in {paths:1, sources:1, converters:1}){
 			for (var i = 0; i < this[key].length; i++) {
 				this[key][i].update(delta);
 			};
+		}
+		var finished = true;
+		for (var i = 0; i < this.drains.length; i++) {
+			finished &= this.drains[i].isFull();
+		};
+		if(finished){
+			this.nextLevel();
 		}
 	}
 }
@@ -719,6 +744,63 @@ Game.prototype.addObstacle = function(element, cornerA, cornerB){
 	this.obstacles.push(new Obstacle(element, cornerA, cornerB, this.svg));
 }
 
+Game.prototype.loadLevel = function(level){
+	this.reset();
+
+	var self = this;
+	level.sources.forEach(function(ea){
+		self.addSource(self.elements[ea.element], ea.x, ea.y, 5);
+	});
+	level.drains.forEach(function(ea){
+		self.addDrain(self.elements[ea.element], ea.x, ea.y, 5);
+	});
+	level.converters.forEach(function(ea){
+		self.addConverter(self.elements[ea.element], ea.x, ea.y, 5);
+	});
+	level.obstacles.forEach(function(ea){
+		self.addObstacle(self.elements[ea.element], ea.A, ea.B);
+	});
+}
+
+Game.prototype.showTransition = function(){
+	var pane = document.createElement('div');
+	pane.style.position = 'absolute';
+	pane.style.width = '100%';
+	pane.style.height = '100%';
+	pane.style.top = '0';
+	pane.style.left = '0';
+	pane.style.backgroundColor = 'black';
+	document.body.appendChild(pane);
+
+	this.transitioning = true;
+
+	var self = this;
+	var done = false;
+	pane.addEventListener('transitionend', function(){
+		if(done){
+			document.body.removeChild(pane);
+			self.transitioning = false;
+		} else {
+			self.loadLevel(levels[self.currentLevel]);
+			pane.style.opacity = 0;
+			done = true;
+		}
+	});
+
+	window.setTimeout(function(){
+		pane.style.opacity = 1;
+	},10);
+}
+
+Game.prototype.nextLevel = function(){
+	this.currentLevel++;
+	if(this.currentLevel >= levels.length){
+		alert("You won"); //TODO make nicer.... as if i had time, lol
+		this.currentLevel = 0;
+	}
+	this.showTransition();
+}
+
 Game.prototype.start = function() {
 	var self = this;
 	this.svg.addEventListener('mousemove', function(evt){
@@ -751,22 +833,7 @@ Game.prototype.start = function() {
 		self.cancelPath();
 	});
 
-	this.addSource(this.elements.fire, 50, 550, 5);
-	this.addDrain(this.elements.air, 750, 550, 5);
-
-	this.addSource(this.elements.water, 750, 50, 5);
-	this.addDrain(this.elements.earth, 50, 50, 5);
-
-	this.addConverter(this.elements.air, 400, 100, 5);
-	this.addConverter(this.elements.earth, 400, 500, 5);
-
-	this.addObstacle(this.elements.wall, {x:300, y:280}, {x:500, y:320});
-	
-	this.addObstacle(this.elements.fire, {x:300, y:-10}, {x:340, y:280});
-	this.addObstacle(this.elements.air, {x:460, y:-10}, {x:500, y:280});
-
-	this.addObstacle(this.elements.earth, {x:300, y:320}, {x:340, y:610});
-	this.addObstacle(this.elements.water, {x:460, y:320}, {x:500, y:610});
+	this.loadLevel(levels[0]);
 
 	var last = new Date().valueOf();
 	function update(){
