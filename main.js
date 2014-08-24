@@ -10,6 +10,152 @@ window.addEventListener('load', function(){
 	_game_.start();
 });
 
+function ColissionTree(points){
+	this.bbox = {
+		min:{
+			x: Infinity,
+			y: Infinity
+		},
+		max:{
+			x: -Infinity,
+			y: -Infinity
+		}
+	}
+	var midX = [];
+	var midY = [];
+	for (var i = 0; i < points.length; i++) {
+		this.bbox.min.x=Math.min(this.bbox.min.x,points[i].x);
+		this.bbox.min.y=Math.min(this.bbox.min.y,points[i].y);
+		this.bbox.max.x=Math.max(this.bbox.max.x,points[i].x);
+		this.bbox.max.y=Math.max(this.bbox.max.y,points[i].y);
+		midX.push(points[i]);
+		midY.push(points[i]);
+	};
+	if(points.length > 16){ //subdivide only if a sufficient number of points is present
+		midX.sort(function(a,b){return a.x-b.x});
+		midY.sort(function(a,b){return a.y-b.y});
+
+		midX = midX.splice(Math.ceil(midX.length/2)-1, 2 - midX.length%2);
+		midY = midY.splice(Math.ceil(midY.length/2)-1, 2 - midY.length%2);
+		var median = {
+			x: 0,
+			y: 0
+		};
+		for (var i = 0; i < midX.length; i++) {
+			median.x += midX[i].x;
+			median.y += midY[i].y;
+		};
+		median.x /= midX.length;
+		median.y /= midY.length;
+
+		var topLeft = [];
+		var	topRight = [];
+		var bottomLeft = [];
+		var bottomRight = [];
+
+		var last = false;
+		for (var i = 0; i < points.length; i++) {
+			var next = false;
+			var point = points[i];
+			if(point.x <= median.x){
+				if(point.y <= median.y){
+					next = topLeft;
+				} else {
+					next = bottomLeft;
+				}
+			} else if(point.y <= median.y){
+				next = topRight;
+			} else {
+				next = bottomRight;
+			}
+			next.push(point);
+			if(last && last != next){
+				last.push(point); //because we care for line segments
+			}
+			last = next;
+		}
+
+		this.median = median;
+		this.topLeft = new ColissionTree(topLeft);
+		this.topRight = new ColissionTree(topRight);
+		this.bottomLeft = new ColissionTree(bottomLeft);
+		this.bottomRight = new ColissionTree(bottomRight);
+	} else {
+		this.points = points;
+	}
+};
+
+function linesCollide(a, b, c, d){
+	var denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
+    var numerator1 = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
+    var numerator2 = ((a.y - c.y) * (b.x - a.x)) - ((a.x - c.x) * (b.y - a.y));
+
+    if (denominator == 0){
+    	if(numerator1 == 0 && numerator2 == 0){
+    		if(a.x != b.x){
+    			var ac = a.x-c.x,
+    			ad = a.x-d.x,
+    			bc = b.x-c.x,
+    			bd = b.x-d.x;
+    			return ac*ad <= 0 || bc*bd <= 0 || ac*bc <=0 || ad*bd <= 0;
+    		} else {
+    			var ac = a.y-c.y,
+    			ad = a.y-d.y,
+    			bc = b.y-c.y,
+    			bd = b.y-d.y;
+    			return ac*ad <= 0 || bc*bd <= 0 || ac*bc <=0 || ad*bd <= 0;
+    		}
+    	} else {
+    		return false;
+    	};
+    }
+
+    var r = numerator1 / denominator;
+    var s = numerator2 / denominator;
+
+    return (r >= 0 && r <= 1) && (s >= 0 && s <= 1);
+};
+
+ColissionTree.prototype.collides = function(from, to){
+		if(
+			(from.x < this.bbox.min.x && to.x < this.bbox.min.x) ||
+			(from.x > this.bbox.max.x && to.x > this.bbox.max.x) ||
+			(from.y < this.bbox.min.y && to.y < this.bbox.min.y) ||
+			(from.y > this.bbox.max.y && to.y > this.bbox.max.y)
+		){
+			return false
+		} else if(!this.points){ //subdivided, check correct subtree
+			var p = [from, to];
+			var last = false;
+			for (var i = 0; i < p.length; i++) {
+				var point = p[i];
+				var next = false;
+				if(point.x <= this.median.x){
+					if(point.y <= this.median.y){
+						next = this.topLeft;
+					} else {
+						next = this.bottomLeft;
+					}
+				} else if(point.y <= this.median.y){
+					next = this.topRight;
+				} else {
+					next = this.bottomRight;
+				}
+				if(next != last && next.collides(from,to)){
+					return true;
+				}
+				last = next;
+			}
+			return false;
+		} else { //not subdivided, check own line segements
+			for (var i = 1; i < this.points.length; i++) {
+				if(linesCollide(from, to, this.points[i-1], this.points[i])){
+					return true;
+				}
+			};
+		}
+}
+
 function Path(element, x, y, number, parent){
 	var domElement = document.createElementNS(SVG_NS, 'path');
 	var id = 'path' + number;
@@ -41,6 +187,9 @@ Path.prototype.createSVGPathDescriptor = function(){
 }
 
 Path.prototype.addPoint = function(x,y){
+	if(this.finalized){
+		return;
+	}
 	this.points.push({x:x, y:y});
 	this.createSVGPathDescriptor();
 
@@ -50,6 +199,17 @@ Path.prototype.addPoint = function(x,y){
 		var dy = this.points[l].y-this.points[l-1].y;
 		this.points[l].length = Math.sqrt(dx*dx+dy*dy);
 		this.length += this.points[l].length;
+	}
+}
+
+Path.prototype.finalize = function(){
+	this.finalized = true;
+	this.colissionTree = new ColissionTree(this.points);
+}
+
+Path.prototype.collides = function(from, to){
+	if(this.finalized){
+		return this.colissionTree.collides(from, to);
 	}
 }
 
@@ -349,6 +509,13 @@ Game.prototype.startDrawingPath = function(source, x, y){
 
 Game.prototype.addPointToPath = function(x, y){
 	if(this.newPath){
+		var last = this.newPath.points[this.newPath.points.length-1];
+		for (var i = 0; i < this.paths.length; i++) {
+			var p = this.paths[i];
+			if(p.element != this.newPath.element && p.collides(last, {x:x,y:y})){
+				return;
+			}
+		};
 		this.newPath.addPoint(x, y);
 	}
 }
