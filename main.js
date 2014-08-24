@@ -185,7 +185,7 @@ Path.prototype.finalize = function(){
 }
 
 Path.prototype.collides = function(element, from, to){
-	if(this.element != element && this.finalized){
+	if(this.element.opposite==element && this.finalized){
 		return this.collissionTree.collides(from, to);
 	}
 }
@@ -572,13 +572,13 @@ Obstacle.prototype.collides = function(element, from, to){
 function Game(svg){
 	this.elements = {
 		earth: {
-			color: 'olive',
+			color: 'darkolivegreen ',
 		},
 		water: {
 			color: 'blue',
 		},
 		air: {
-			color: '#FFFF60',
+			color: '#FFFF80',
 		},
 		fire: {
 			color: 'red',
@@ -587,6 +587,11 @@ function Game(svg){
 			color: 'gray'
 		}
 	}
+
+	this.elements.water.opposite = this.elements.fire;
+	this.elements.fire.opposite = this.elements.water;
+	this.elements.earth.opposite = this.elements.air;
+	this.elements.air.opposite = this.elements.earth;
 	this.svg = svg;
 	this.currentLevel = 0;
 
@@ -833,7 +838,7 @@ Game.prototype.start = function() {
 		self.cancelPath();
 	});
 
-	this.loadLevel(levels[0]);
+	this.loadLevel(levels[this.currentLevel]);
 
 	var last = new Date().valueOf();
 	function update(){
