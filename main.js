@@ -465,6 +465,7 @@ Game.prototype.finishPath = function(drain, x, y){
 		if(drain.element === this.newPath.element){
 			this.newPath.addPoint(x, y);
 			this.newPath.drain = drain;
+			this.newPath.finalize();
 			this.newPath = false;
 		} else {
 			this.cancelPath();
