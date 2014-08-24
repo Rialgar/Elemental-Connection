@@ -242,6 +242,12 @@ Path.prototype.update = function(delta){
 	};
 }
 
+Path.prototype.removeCircles = function(){
+	for (var i = 0; i < this.circles.length; i++) {
+		this.circles[i].domElement.parentElement.removeChild(this.circles[i].domElement);
+	};
+}
+
 var SD_SIZE = 30;
 var SD_SIZE_SQ = SD_SIZE*SD_SIZE;
 
@@ -479,11 +485,14 @@ Converter.prototype.updateFill = function(){
 }
 
 Converter.prototype.acceptPath = function(path){
-	if(this.incoming){
-		this.game.removePath(this.incoming);
+	if(this.outgoing != path){
+		if(this.incoming){
+			this.game.removePath(this.incoming);
+		}
+		this.incoming = path;
+		return true;
 	}
-	this.incoming = path;
-	return true;
+	return false;
 }
 
 Converter.prototype.collissionFree = function(path, other, from, to){
@@ -512,11 +521,14 @@ Converter.prototype.removePath = function(path){
 Converter.prototype.addUnit = function (){
 	this.added++;
 	this.setAmount(this.added - this.removed);
+	this.update(0);
 }
 
 Converter.prototype.update = function(delta){
-	if(this.amount > 0 && this.outgoing && this.outgoing.drain){
+	if(this.sendNextIn > 0){
 		this.sendNextIn -= delta;
+	}
+	if(this.amount > 0 && this.outgoing && this.outgoing.drain){
 		if(this.sendNextIn <= 0){
 			this.outgoing.addCircle(-this.sendNextIn);
 			this.sendNextIn = this.sendInterval;
@@ -555,7 +567,7 @@ Obstacle.prototype.collides = function(element, from, to){
 function Game(svg){
 	this.elements = {
 		earth: {
-			color: 'saddlebrown',
+			color: 'olive',
 		},
 		water: {
 			color: 'blue',
@@ -639,6 +651,7 @@ Game.prototype.removePath = function(path){
 	if(path.drain){
 		path.drain.removePath(path);
 	}
+	path.removeCircles();
 	this.paths.splice(this.paths.indexOf(path),1);
 	path.domElement.parentElement.removeChild(path.domElement);
 }
@@ -649,13 +662,17 @@ Game.prototype.startDrawingPath = function(source, x, y){
 	return this.newPath;
 }
 
-Game.prototype.addPointToPath = function(x, y){
+Game.prototype.addPointToPath = function(x, y, connector){
 	if(this.newPath){
 		var last = this.newPath.points[this.newPath.points.length-1];
 		var point = {x:x,y:y};
 		for (var key in {paths:1, obstacles:1, sources:1, drains: 1}){
 			for (var i = 0; i < this[key].length; i++) {
-				if(!this.newPath.source.collissionFree || !this.newPath.source.collissionFree(this.newPath, this[key][i], last, point)){
+				var colfree = this.newPath.source.collissionFree && this.newPath.source.collissionFree(this.newPath, this[key][i], last, point);
+				if(!colfree && connector && connector.collissionFree && this[key][i].source == connector){
+					colfree = connector.includes(last);
+				}
+				if(!colfree){
 					if(this[key][i].collides(this.newPath.element, last, point)){
 						return false;
 					}
@@ -669,7 +686,7 @@ Game.prototype.addPointToPath = function(x, y){
 
 Game.prototype.finishPath = function(drain, x, y){
 	if(this.newPath){
-		if(this.addPointToPath(x,y) && drain.acceptPath(this.newPath)){
+		if(this.addPointToPath(x, y, drain) && drain.acceptPath(this.newPath)){
 			this.newPath.drain = drain;
 			this.newPath.finalize();
 			this.newPath = false;
