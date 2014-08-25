@@ -287,12 +287,14 @@ function Source(element, x, y, amount, parent, game){
 			game.removePath(self.path);
 		}
 		self.path = game.startDrawingPath(self, x, y);
+		evt.preventDefault();
 	});
 	domElement.addEventListener("touchstart", function(evt){
 		if(self.path){
 			game.removePath(self.path);
 		}
 		self.path = game.startDrawingPath(self, x, y);
+		evt.preventDefault();
 	});
 }
 
@@ -379,6 +381,7 @@ function Drain(element, x, y, amount, parent, game){
 	domElement.addEventListener("mouseup", function(evt){
 		game.finishPath(self, x, y);
 		evt.stopPropagation();
+		evt.preventDefault();
 	});
 }
 
@@ -465,17 +468,20 @@ function Converter(element, x, y, amount, parent, game){
 			game.removePath(self.outgoing);
 		}
 		self.outgoing = game.startDrawingPath(self, x, y);
+		evt.preventDefault();
 	});
 	domElement.addEventListener("touchstart", function(evt){
 		if(self.outgoing){
 			game.removePath(self.outgoing);
 		}
 		self.outgoing = game.startDrawingPath(self, x, y);
+		evt.preventDefault();
 	});
 
 	domElement.addEventListener("mouseup", function(evt){
 		game.finishPath(self, x, y);
 		evt.stopPropagation();
+		evt.preventDefault();
 	});
 }
 
@@ -780,21 +786,18 @@ Game.prototype.showTransition = function(){
 	this.transitioning = true;
 
 	var self = this;
-	var done = false;
-	pane.addEventListener('transitionend', function(){
-		if(done){
-			document.body.removeChild(pane);
-			self.transitioning = false;
-		} else {
-			self.loadLevel(levels[self.currentLevel]);
-			pane.style.opacity = 0;
-			done = true;
-		}
-	});
 
 	window.setTimeout(function(){
 		pane.style.opacity = 1;
-	},10);
+		window.setTimeout(function(){
+		window.setTimeout(function(){
+			document.body.removeChild(pane);
+			self.transitioning = false;
+		}, 500);
+		self.loadLevel(levels[self.currentLevel]);
+		pane.style.opacity = 0;
+		}, 500);
+	},20);
 }
 
 Game.prototype.nextLevel = function(){
@@ -810,10 +813,12 @@ Game.prototype.start = function() {
 	var self = this;
 	this.svg.addEventListener('mousemove', function(evt){
 		self.addPointToPath(evt.layerX/self.scale.x, evt.layerY/self.scale.y);
+		evt.preventDefault();
 	});
 
 	this.svg.addEventListener('mouseup', function(evt){
 		self.cancelPath();
+		evt.preventDefault();
 	});
 
 	document.addEventListener('touchmove', function(evt){
@@ -825,6 +830,7 @@ Game.prototype.start = function() {
 	});
 
 	this.svg.addEventListener('touchend', function(evt){
+		evt.preventDefault();
 		var x = (evt.changedTouches[0].clientX-self.offset.x)/self.scale.x;
 		var y = (evt.changedTouches[0].clientY-self.offset.y)/self.scale.y;
 		for(var key in {drains:1, converters:1}){
